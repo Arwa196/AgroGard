@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plant Health Detector</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>🌿 Plant Health Detector 🌱</h1>
+    <p>AI-powered tool to monitor the health of your plants!</p>
+  </header>
+
+  <!-- Camera Section -->
+  <section id="camera-container">
+    <div id="webcam-container"></div>
+    <button id="start-btn" class="btn" onclick="init()">Start Detector</button>
+    <button id="stop-btn" class="btn" onclick="stopDetector()" disabled>Stop Detector</button>
+  </section>
+
+  <!-- Image Upload Section -->
+  <section id="upload-container">
+    <h2>Predict from Image Upload</h2>
+    <input type="file" id="imageUpload" accept="image/*" class="btn">
+    <img id="uploadedImage" src="#" alt="Uploaded Image Preview" class="hidden">
+    <button id="predict-upload" class="btn" onclick="predictFromUpload()">Predict</button>
+  </section>
+
+  <!-- Progress Bar Section -->
+  <section id="progress-container">
+    <p id="progress-text">Status updates will appear here...</p>
+    <div id="progress-bar-container">
+      <div id="progress-bar"></div>
+    </div>
+    <div id="prediction-results"></div>
+    <button id="cancel-btn" class="btn hidden" onclick="cancelPrediction()">Cancel</button>
+  </section>
+  
+
+  <footer>
+    <p>🌳 Built using <a href="https://teachablemachine.withgoogle.com/train/image/1zyY3UTIcAJq0D2igeEt5NbeQ61A0LXQT">Teachable Machine</a> and TensorFlow.js 🍃</p>
+  </footer>
+
+  <script>
+    const URL = "https://teachablemachine.withgoogle.com/models/14ZBDSZz9/";
+    let model, webcam, maxPredictions;
+    let webcamRunning = false;
+    let animationFrameId;
+
+    async function init() {
+      const modelURL = URL + "model.json";
+      const metadataURL = URL + "metadata.json";
+
+      // Update progress bar for loading
+      const progressBar = document.getElementById("progress-bar");
+      const progressText = document.getElementById("progress-text");
+      document.getElementById("progress-container").style.display = "block";
+      progressBar.style.width = "0%";
+      progressText.textContent = "Loading model...";
+
+      // Load model and metadata
+      model = await tmImage.load(modelURL, metadataURL);
+      maxPredictions = model.getTotalClasses();
+      progressBar.style.width = "100%";
+      progressText.textContent = "Model loaded!";
+
+      // Setup webcam
+      const flip = true;
+      webcam = new tmImage.Webcam(300, 300, flip);
+      await webcam.setup();
+      await webcam.play();
+      webcamRunning = true;
+
+      // Enable/disable buttons
+      document.getElementById("stop-btn").disabled = false;
+      document.getElementById("start-btn").disabled = true;
+
+      // Append webcam canvas
+      const webcamContainer = document.getElementById("webcam-container");
+      webcamContainer.innerHTML = ""; // Clear existing content
+      webcamContainer.appendChild(webcam.canvas);
+
+      window.requestAnimationFrame(loop);
+    }
+
+    async function loop() {
+      if (webcamRunning) {
+        webcam.update();
+        await predict();
+        animationFrameId = window.requestAnimationFrame(loop);
+      }
+    }
+
+    async function predict() {
+      const prediction = await model.predict(webcam.canvas);
+      const predictionResults = document.getElementById("prediction-results");
+      predictionResults.innerHTML = ""; // Clear previous results
+
+      prediction.forEach((pred) => {
+        const result = document.createElement("div");
+        result.innerHTML = `<strong>${pred.className}:</strong> ${(
+          pred.probability * 100
+        ).toFixed(2)}%`;
+        predictionResults.appendChild(result);
+      });
+    }
+
+    function stopDetector() {
+      if (webcam) {
+        webcam.stop();
+      }
+      webcamRunning = false;
+
+      // Cancel the animation loop
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+
+      // Hide webcam container
+      document.getElementById("webcam-container").innerHTML = "";
+
+      // Enable/disable buttons
+      document.getElementById("stop-btn").disabled = true;
+      document.getElementById("start-btn").disabled = false;
+    }
+
+    async function predictFromUpload() {
+      const input = document.getElementById("imageUpload");
+      const uploadedImage = document.getElementById("uploadedImage");
+      const progressBar = document.getElementById("progress-bar");
+      const progressText = document.getElementById("progress-text");
+      const predictionResults = document.getElementById("prediction-results");
+
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const reader = new FileReader();
+
+        document.getElementById("progress-container").style.display = "block";
+        progressBar.style.width = "0%";
+        progressText.textContent = "Loading image...";
+        predictionResults.innerHTML = "";
+
+        reader.onload = (e) => {
+          uploadedImage.src = e.target.result;
+          uploadedImage.classList.remove("hidden");
+
+          const img = new Image();
+          img.src = e.target.result;
+          img.onload = async () => {
+            progressBar.style.width = "60%";
+            progressText.textContent = "Image loaded. Predicting...";
+
+            const prediction = await model.predict(img);
+            progressBar.style.width = "100%";
+            progressText.textContent = "Prediction complete!";
+
+            prediction.forEach((pred) => {
+              const result = document.createElement("div");
+              result.innerHTML = `<strong>${pred.className}:</strong> ${(
+                pred.probability * 100
+              ).toFixed(2)}%`;
+              predictionResults.appendChild(result);
+            });
+          };
+        };
+
+        reader.readAsDataURL(file);
+      }
+    }
+  </script>
+</body>
+</html>
